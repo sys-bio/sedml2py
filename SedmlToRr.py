@@ -5,10 +5,15 @@
 # exec ret
 #
 # import SedmlToRr as s2p
-# ret = s2p.sedml_to_python("full_path/sedml_file.sedx")
+# ret = s2p.sedml_to_python("full_path/sedml_archive.sedx")
 # exec ret
+# a "full_path/sedml_archive" folder will be created and the unarchived files placed within
+#
+# import SedmlToRr as s2p
+# execfile("full_path/sedml_archive.py")
 #
 # the .sedml extension indicates a sedml file, the .sedx extension indicates a sedml archive
+
 
 import sys
 import os.path
@@ -19,6 +24,7 @@ import roadrunner.testing
 import zipfile, traceback
 from os.path import isdir, join, normpath, split
 from collections import namedtuple
+
 MatchingSetsOfVariableIDs = namedtuple("MatchingSetsOfVariableIDs", "datagenID, taskReference, sedmlID, sbmlID")
 MatchingSetsOfRepeatedTasksDataGenerators = namedtuple("MatchingSetsOfRepeatedTasksDataGenerators", "datagenID, rangeSize")
 
@@ -26,13 +32,6 @@ MatchingSetsOfRepeatedTasksDataGenerators = namedtuple("MatchingSetsOfRepeatedTa
 # Entry point
 def sedml_to_python(fullPathName):      # full path name to SedML model
   from os.path import basename
-
-
-  sedmlDoc = libsedml.readSedML(fullPathName)
-  for e in range(0,sedmlDoc.getNumTasks()):
-    task = sedmlDoc.getTask(e)
-    print(task)
- 
 
   modelName = os.path.splitext(basename(fullPathName))[0]
   extension = os.path.splitext(basename(fullPathName))[1]
@@ -83,7 +82,6 @@ def sedml_to_python(fullPathName):      # full path name to SedML model
   for i in range(0, sedmlDoc.getNumModels()):
     currentModel = sedmlDoc.getModel(i)
     generateData(sedmlDoc, currentModel, dataGeneratorsList)
-    print("")
   print("# The Plots")
   generatePlots(sedmlDoc, dataGeneratorsList)
   print("# End of generated script\n")
@@ -96,8 +94,10 @@ def sedml_to_python(fullPathName):      # full path name to SedML model
 
 def generateTasks(rrName, sedmlDoc, currentModel, path):
   
+  listOfChanges = []
   loadModel(rrName, sedmlDoc, currentModel, path)
   print(rrName + ".simulateOptions.structuredResult = False")
+  bFoundAtLeastOneTask = False
 
   for i in range(0, currentModel.getNumChanges()):
     aChange = currentModel.getChange(i)
@@ -113,12 +113,33 @@ def generateTasks(rrName, sedmlDoc, currentModel, path):
         return          # nothing to do repeatedly since our change is bad
       variableName = variableName.rsplit("id=\'",1)[1]
       variableName = variableName.rsplit("\'",1)[0]
-      print(rrName + ".model[\"[" + variableName + "]\"] = " + newValue)                   # set amount
+      aStr = rrName + ".model[\"init([" + variableName + "])\"] = " + newValue    # set amount
+#      aStr = rrName + ".model[\"[" + variableName + "]\"] = " + newValue    # set amount
+      listOfChanges.append(aStr)
+      print(aStr)
     else:
-      print("# Unsupported change " + aChange.getElementName() + " for model " + currentModel.getId())
+      aStr = "# Unsupported change " + aChange.getElementName() + " for model " + currentModel.getId()
+      print(aStr)
       return
 
   # The 'selections' are a list of all the 'variable' elements from the dataGenerators
+  # we first deal with normal tasks, if any
+  for e in range(0,sedmlDoc.getNumTasks()):
+    task1 = sedmlDoc.getTask(e)
+    if(task1.getElementName() == "repeatedTask"):
+      pass
+    else:
+      if(task1.getModelReference() != currentModel.getId()):
+        continue
+      variablesDictionary = []
+      variablesList = []
+      populateVariableLists(sedmlDoc, task1, variablesList, variablesDictionary)
+      if(len(variablesList) == 0):  # nothing to do if no data generators refer to this task
+        continue
+      generateSimulation(rrName, sedmlDoc, currentModel, task1, variablesList, variablesDictionary, -1)
+      bFoundAtLeastOneTask = True
+
+  # now deal with repeated tasks, if any
   for e in range(0,sedmlDoc.getNumTasks()):
     task1 = sedmlDoc.getTask(e)
     if(task1.getElementName() == "repeatedTask"):
@@ -132,6 +153,14 @@ def generateTasks(rrName, sedmlDoc, currentModel, path):
         if(aRange.getElementName() != "uniformRange"):
           print("# Only uniformRange ranges are supported at this time")
           continue
+
+        # if resetModel is true we need to reapply all the changes from above
+        print("")
+        bResetModel = task1.getResetModel()
+        if(bResetModel == True):
+          print(rrName + ".simulateOptions.resetModel = True")
+        else:
+          print(rrName + ".simulateOptions.resetModel = False")
 
         # need to use the RepeatedTask because the data generators refer to it 
         variablesDictionary = []      # matching pairs of sedml variable ID and sbml variable ID
@@ -150,6 +179,10 @@ def generateTasks(rrName, sedmlDoc, currentModel, path):
         # and generate a task
         for j in range(0, aRange.getNumberOfPoints()):
           print("")
+          if(bResetModel == True): # if we reset the model we need to repeat again all the Changes from above
+            for aStr in listOfChanges:
+              print(aStr)
+
           start = aRange.getStart()
           end = aRange.getEnd()
           newValue = start + j * (end - start) / (aRange.getNumberOfPoints()-1)
@@ -160,20 +193,14 @@ def generateTasks(rrName, sedmlDoc, currentModel, path):
           else:
             print("# Unsupported setValue target " + variableName)
             return          # nothing to do repeatedly since our change is bad
-          print(rrName + ".model[\"[" + vn + "]\"] = " + str(newValue))                   # set amount
+          print(rrName + ".model[\"init([" + vn + "])\"] = " + str(newValue))                   # set amount
           # need to use both the real Task (task2) because it has the reference to model and simulation 
           # and the repeated task (task1) because its Id is used for generating the flattened Id's
           generateSimulation(rrName, sedmlDoc, currentModel, task2, variablesList, variablesDictionary, j, task1)
+          bFoundAtLeastOneTask = True
+  if(bFoundAtLeastOneTask == False):
+    print("# No simulation to run for this model: " + currentModel.getId());
 
-    else:       # not a repeated task
-      if(task1.getModelReference() != currentModel.getId()):
-        continue
-      variablesDictionary = []
-      variablesList = []
-      populateVariableLists(sedmlDoc, task1, variablesList, variablesDictionary)
-      if(len(variablesList) == 0):
-        continue
-      generateSimulation(rrName, sedmlDoc, currentModel, task1, variablesList, variablesDictionary, -1)
 
 
 def loadModel(rrName, sedmlDoc, currentModel, path):
@@ -281,10 +308,9 @@ def generateSimulation(rrName, sedmlDoc, currentModel, task1, variablesList, var
 
 def generateData(sedmlDoc, currentModel, dataGeneratorsList):
 
-  #from collections import namedtuple
-  #MatchingSetsOfVariableIDs = namedtuple("MatchingSetsOfVariableIDs", "datagenID, taskReference, sedmlID, sbmlID")
   variablesDictionary = []      # matching pairs of sedml variable ID and sbml variable ID
   variablesList = []            # the IDs of the sbml variables, non duplicate entries
+  bFoundAtLeastOneTask = False
 
   for e in range(0,sedmlDoc.getNumTasks()):
     task1 = sedmlDoc.getTask(e)
@@ -311,6 +337,7 @@ def generateData(sedmlDoc, currentModel, dataGeneratorsList):
           # need to use both the real Task (task2) because it has the reference to model and simulation 
           # and the repeated task (task1) because its Id is used for generating the flattened Id's
           generateDataLoop(sedmlDoc, currentModel, task2, variablesList, variablesDictionary, j, task1, dataGeneratorsList)
+          bFoundAtLeastOneTask = True
 
     else:       # not a repeated task
       if(task1.getModelReference() != currentModel.getId()):
@@ -321,6 +348,13 @@ def generateData(sedmlDoc, currentModel, dataGeneratorsList):
       if(len(variablesList) == 0):
         continue
       generateDataLoop(sedmlDoc, currentModel, task1, variablesList, variablesDictionary, -1)
+      bFoundAtLeastOneTask = True
+
+  if(bFoundAtLeastOneTask == False):
+    pass
+    #print("# No dataGenerator for this model: " + currentModel.getId());
+  else:
+    print("")
 
 
 
@@ -331,14 +365,13 @@ def generateDataLoop(sedmlDoc, currentModel, task1, variablesList, variablesDict
   for s in range(0, sedmlDoc.getNumSimulations()):
     currentSimulation = sedmlDoc.getSimulation(s)
     if(task1.getSimulationReference() == currentSimulation.getId()):
-      break;            # we found the simulation referred to by this task
+      break;            # we found the simulation referred to by this task (can't be more than one)
 
   for j in range (0, len(variablesDictionary)):
     m = variablesDictionary[j]
     current = sedmlDoc.getDataGenerator(m.datagenID)
     dataGeneratorResult = libsedml.formulaToString(current.getMath())
 
-#    if((current.getId() == m.datagenID) and (task1.getId() == m.taskReference)):
     if(current.getId() == m.datagenID):
       stringToReplace = m.sedmlID
       position = m.sbmlID
@@ -429,69 +462,10 @@ def generatePlots(sedmlDoc, dataGeneratorsList):
     print("plt.show()")
 
 
-
-
-def main(args):
-
-  if len(args) != 3:
-    print(main.__doc__)
-    sys.exit(1)
-
-  outDir = args[1]
-  modelName = args[2]
-
-  sedml_to_python2(outDir, modelName)
-  
-def sedml_to_python2(outDir, modelName):
-    
-  class Tee(object):
-    def __init__(self, *files):
-      self.files = files
-    def write(self, obj):
-      for f in self.files:
-        f.write(obj)
-
-  sedmlDoc = libsedml.readSedML(outDir + "/SedMLModels/" + modelName + ".sedml")      # try the sedml extension first, then try the more generic xml
-  if (sedmlDoc.getErrorLog().getNumFailsWithSeverity(libsedml.LIBSEDML_SEV_ERROR) > 0):
-    sedmlDoc = libsedml.readSedML(outDir + "/SedMLModels/" + modelName + ".xml")      # "/SedMLModels/"
-    if (sedmlDoc.getErrorLog().getNumFailsWithSeverity(libsedml.LIBSEDML_SEV_ERROR) > 0):
-      errorString = sedmlDoc.getErrorLog().toString()
-      print(errorString)
-      sys.exit(2)
-
-  f = open(outDir + "/" + modelName + '.py', 'w+')   # print to both console and file
-  original = sys.stdout
-  sys.stdout = Tee(sys.stdout, f)
-
-  for i in range(0, sedmlDoc.getNumModels()):
-    currentModel = sedmlDoc.getModel(i)
-    doWork(sedmlDoc, currentModel)
-
-  sys.stdout = original                         # restore print to stdout only
-  f.close()
-  print("Finished file creation")
-
-  string = outDir + "/" + modelName + ".py"     # run the file generated above
-  execfile(string)
-
 def isId(string):
   regular = re.compile('[\\/:-]')               # a SedML Id cannot contain these characters
   if regular.search(string):
     return False
   else:
     return True
-
-
-
-sedmlFilesList = []
-sedmlFilesList.append("BIOMD0000000021")        # works as is
-sedmlFilesList.append("app2sim")                # exported from vCell
-sedmlFilesList.append("asedml3repeat")          # exported from vCell (parameter scan)
-
-
-if __name__ == '__main__':
-   #main(sys.argv)
-   main(["SedmlToRr", "C:/WinPython-32bit-2.7.5.3/python-2.7.5/Lib/site-packages/roadrunner/testing", sedmlFilesList[3]])
-   #main(["SedmlToRr", "C:/TEMP", "asedml1"])
-
 
