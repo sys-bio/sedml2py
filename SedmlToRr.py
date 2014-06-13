@@ -28,11 +28,13 @@ from collections import namedtuple
 MatchingSetsOfVariableIDs = namedtuple("MatchingSetsOfVariableIDs", "datagenID, taskReference, sedmlID, sbmlID")
 MatchingSetsOfRepeatedTasksDataGenerators = namedtuple("MatchingSetsOfRepeatedTasksDataGenerators", "datagenID, rangeSize")
 
+modelname = str()
 
 # Entry point
 def sedml_to_python(fullPathName):      # full path name to SedML model
   from os.path import basename
-
+  global modelname
+  
   modelName = os.path.splitext(basename(fullPathName))[0]
   extension = os.path.splitext(basename(fullPathName))[1]
   path = fullPathName.rsplit(basename(fullPathName),1)[0]
@@ -203,7 +205,9 @@ def generateTasks(rrName, sedmlDoc, currentModel, path):
 
 
 
-def loadModel(rrName, sedmlDoc, currentModel, path):
+def loadModel(rrName, sedmlDoc, currentModel, path, outdir):
+  global modelname
+  
   string = currentModel.getSource()
   if(isId(string)):                             # it's the Id of a model
     originalModel = sedmlDoc.getModel(string)
@@ -226,8 +230,8 @@ def loadModel(rrName, sedmlDoc, currentModel, path):
     #print(r1.status, r1.reason)
     data1 = r1.read()
     conn.close()
-    string = "SBMLModels/" + modelName + ".xml"
-    f1 = open(outDir + "/" + string, 'w')
+    string = "SBMLModels/" + modelname + ".xml"
+    f1 = open(outdir + "/" + string, 'w')
     f1.write(data1);
     f1.close()
     print(rrName + ".load(roadrunner.testing.get_data('" + string +"'))")
