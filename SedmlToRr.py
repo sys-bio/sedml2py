@@ -29,6 +29,7 @@ MatchingSetsOfVariableIDs = namedtuple("MatchingSetsOfVariableIDs", "datagenID, 
 MatchingSetsOfRepeatedTasksDataGenerators = namedtuple("MatchingSetsOfRepeatedTasksDataGenerators", "datagenID, rangeSize")
 
 modelname = str()
+outdir = str()
 
 # Entry point
 def sedml_to_python(fullPathName):      # full path name to SedML model
@@ -65,8 +66,8 @@ def sedml_to_python(fullPathName):      # full path name to SedML model
   import StringIO
   f = StringIO.StringIO()
   original = sys.stdout
-  sys.stdout = Tee(sys.stdout, f)   # output to console and file
-  #sys.stdout = Tee(f)              # output to file only
+  #sys.stdout = Tee(sys.stdout, f)   # output to console and file
+  sys.stdout = Tee(f)              # output to file only
 
   print("# Begin of generated script")
   print("import roadrunner")
@@ -205,8 +206,9 @@ def generateTasks(rrName, sedmlDoc, currentModel, path):
 
 
 
-def loadModel(rrName, sedmlDoc, currentModel, path, outdir):
+def loadModel(rrName, sedmlDoc, currentModel, path):
   global modelname
+  global outdir
   
   string = currentModel.getSource()
   if(isId(string)):                             # it's the Id of a model
