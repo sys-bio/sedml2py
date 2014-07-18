@@ -218,7 +218,7 @@ def loadModel(rrName, sedmlDoc, currentModel, path):
   if string.startswith("../"):                  # relative location, we trust it but need it trimmed
     string = string[3:]
 
-    print(rrName + ".load('" + path + "/" + string + "')")    # SBML model name recovered from "source" attr
+    print(rrName + ".load('" + path.replace("\\","/") + string + "')")    # SBML model name recovered from "source" attr
     #from os.path import expanduser
     #path = expanduser("~")
     #print(rrName + ".load('" + path + "\\" + string + "')")    # SBML model name recovered from "source" attr
