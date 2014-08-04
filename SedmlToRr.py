@@ -68,8 +68,8 @@ def sedml_to_python(fullPathName):      # full path name to SedML model
     #sys.stdout = Tee(sys.stdout, f)   # output to console and file
     sys.stdout = Tee(f)              # output to file only
 
-    print("# Begin of generated script")
-    print("import roadrunner")
+    print("# Beginning of generated script")
+    print("import tellurium as te")
     print("")
     for i in range(0, sedmlDoc.getNumModels()):
         currentModel = sedmlDoc.getModel(i)
