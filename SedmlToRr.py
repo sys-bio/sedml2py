@@ -18,10 +18,7 @@ import sys
 import os.path
 import re
 import libsedml  # C:\WinPython-32bit-2.7.5.3\python-2.7.5\Lib\site-packages\libsedml\libsedml.py
-import roadrunner
-import roadrunner.testing
-import zipfile, traceback
-from os.path import isdir, join, normpath, split
+import zipfile
 from collections import namedtuple
 
 MatchingSetsOfVariableIDs = namedtuple("MatchingSetsOfVariableIDs", "datagenID, taskReference, sedmlID, sbmlID")
@@ -38,7 +35,6 @@ def sedml_to_python(fullPathName):      # full path name to SedML model
     modelName = os.path.splitext(basename(fullPathName))[0]
     extension = os.path.splitext(basename(fullPathName))[1]
     path = fullPathName.rsplit(basename(fullPathName),1)[0]
-
     class Tee(object):
         def __init__(self, *files):
             self.files = files
@@ -69,7 +65,7 @@ def sedml_to_python(fullPathName):      # full path name to SedML model
     sys.stdout = Tee(f)              # output to file only
 
     print("# Beginning of generated script")
-    print("import tellurium as te")
+    print("import roadrunner")
     print("")
     for i in range(0, sedmlDoc.getNumModels()):
         currentModel = sedmlDoc.getModel(i)
@@ -203,7 +199,6 @@ def generateTasks(rrName, sedmlDoc, currentModel, path):
 def loadModel(rrName, sedmlDoc, currentModel, path):
     global modelname
     global outdir
-
     string = currentModel.getSource()
     if(isId(string)):                             # it's the Id of a model
         originalModel = sedmlDoc.getModel(string)
@@ -214,6 +209,8 @@ def loadModel(rrName, sedmlDoc, currentModel, path):
         #from os.path import expanduser
         #path = expanduser("~")
         #print(rrName + ".load('" + path + "\\" + string + "')")    # SBML model name recovered from "source" attr
+    elif "\\" or "/" not in string:
+        print(rrName + ".load('" + path.replace("\\","/") + string + "')") 
     elif string.startswith("urn:miriam"):
         astr = string.rsplit(':', 1)
         astr = astr[1]
@@ -358,51 +355,93 @@ def generateDataLoop(sedmlDoc, currentModel, task1, variablesList, variablesDict
         currentSimulation = sedmlDoc.getSimulation(s)
         if(task1.getSimulationReference() == currentSimulation.getId()):
             break;            # we found the simulation referred to by this task (can't be more than one)
-            
+    
+    dataGeneratorOutputList = []
+    dataGeneratorTemp = str()
+    
     for j in range(0, len(variablesDictionary)):
         m = variablesDictionary[j]
         current = sedmlDoc.getDataGenerator(m.datagenID)
         dataGeneratorResult = libsedml.formulaToString(current.getMath())
-
-        if(current.getId() == m.datagenID):
-            stringToReplace = m.sedmlID
-            position = m.sbmlID
-            for k in range(0, len(variablesList)):
-                if (position == variablesList[k]):
-                    position = k
-                    break
-            if(repeatedTaskIndex == -1):
-                taskId = task1.getId()
-            else:
-                taskId = repeatedTask.getId() + "_" + str(repeatedTaskIndex)
-            if (currentSimulation.getTypeCode() == libsedml.SEDML_SIMULATION_UNIFORMTIMECOURSE):
-                tc = currentSimulation
-                totNumPoints = tc.getOutputEndTime() * tc.getNumberOfPoints() / (tc.getOutputEndTime() - tc.getOutputStartTime())
-                replacementString = taskId + "[" + str(totNumPoints - currentSimulation.getNumberOfPoints()) + ":," + str(position) + "]"
-            else:
-                print("# Unsupported type " + currentSimulation.getTypeCode() + " for simulation " + currentSimulation.getName())
-            dataGeneratorResult = dataGeneratorResult.replace(stringToReplace, replacementString)
-
-            dataGeneratorId = current.getId()       # we expand the datagen id because they need to be flattened for repeated tasks
-            if(repeatedTaskIndex != -1):
-                dataGeneratorId += "_" + str(repeatedTaskIndex)
-            dataGeneratorResult = dataGeneratorId + " = " + dataGeneratorResult
-            print(dataGeneratorResult)
-
-            if(repeatedTaskIndex != -1):      # list of data generators flattening (when part of a range)
-                position = -1
-                for i in range(0, len(dataGeneratorsList)):
-                    rtdg = dataGeneratorsList[i]
-                    if(rtdg.datagenID == current.getId()):   # already present
-                        position = i
+       
+        if current.getId() == m.datagenID:
+            if dataGeneratorResult != dataGeneratorTemp:
+                stringToReplace = m.sedmlID
+                position = m.sbmlID
+                for k in range(0, len(variablesList)):
+                    if position == variablesList[k]:
+                        position = k
                         break
-                if(position == -1):        # create it
-                    rtdg = MatchingSetsOfRepeatedTasksDataGenerators(current.getId(), repeatedTaskIndex+1 )
-                    dataGeneratorsList.append(rtdg)
+                if repeatedTaskIndex == -1:
+                    taskId = task1.getId()
                 else:
-                    rtdg = MatchingSetsOfRepeatedTasksDataGenerators(current.getId(), repeatedTaskIndex+1 )
-                    dataGeneratorsList[position] = rtdg
+                    taskId = repeatedTask.getId() + "_" + str(repeatedTaskIndex)
+                if currentSimulation.getTypeCode() == libsedml.SEDML_SIMULATION_UNIFORMTIMECOURSE:
+                    tc = currentSimulation
+                    totNumPoints = tc.getOutputEndTime() * tc.getNumberOfPoints() / (tc.getOutputEndTime() - tc.getOutputStartTime())
+                    replacementString = taskId + "[" + str(totNumPoints - currentSimulation.getNumberOfPoints()) + ":," + str(position) + "]"
+                else:
+                    print("# Unsupported type " + currentSimulation.getTypeCode() + " for simulation " + currentSimulation.getName())
+                dataGeneratorReplaced = dataGeneratorResult.replace(stringToReplace, replacementString)
+    
+                dataGeneratorId = current.getId()       # we expand the datagen id because they need to be flattened for repeated tasks
+                if repeatedTaskIndex != -1:
+                    dataGeneratorId += "_" + str(repeatedTaskIndex)
+                dataGeneratorElement = dataGeneratorId + " = " + dataGeneratorReplaced
+                dataGeneratorOutputList.append(dataGeneratorElement)
 
+                if repeatedTaskIndex != -1:      # list of data generators flattening (when part of a range)
+                    position = -1
+                    for i in range(0, len(dataGeneratorsList)):
+                        rtdg = dataGeneratorsList[i]
+                        if rtdg.datagenID == current.getId():   # already present
+                            position = i
+                            break
+                    if position == -1:        # create it
+                        rtdg = MatchingSetsOfRepeatedTasksDataGenerators(current.getId(), repeatedTaskIndex+1 )
+                        dataGeneratorsList.append(rtdg)
+                    else:
+                        rtdg = MatchingSetsOfRepeatedTasksDataGenerators(current.getId(), repeatedTaskIndex+1 )
+                        dataGeneratorsList[position] = rtdg
+                        
+                dataGeneratorTemp = dataGeneratorResult
+                
+            else:       #In case of multiple variables within a single data generator
+                stringToReplace = m.sedmlID
+                position = m.sbmlID
+                for k in range(0, len(variablesList)):
+                    if position == variablesList[k]:
+                        position = k
+                        break
+                if repeatedTaskIndex == -1:
+                    taskId = task1.getId()
+                else:
+                    taskId = repeatedTask.getId() + "_" + str(repeatedTaskIndex)
+                if currentSimulation.getTypeCode() == libsedml.SEDML_SIMULATION_UNIFORMTIMECOURSE:
+                    tc = currentSimulation
+                    totNumPoints = tc.getOutputEndTime() * tc.getNumberOfPoints() / (tc.getOutputEndTime() - tc.getOutputStartTime())
+                    replacementString = taskId + "[" + str(totNumPoints - currentSimulation.getNumberOfPoints()) + ":," + str(position) + "]"
+                else:
+                    print("# Unsupported type " + currentSimulation.getTypeCode() + " for simulation " + currentSimulation.getName())
+                dataGeneratorOutputList[-1] = dataGeneratorOutputList[-1].replace(stringToReplace, replacementString)
+
+                if repeatedTaskIndex != -1:      # list of data generators flattening (when part of a range)
+                    position = -1
+                    for i in range(0, len(dataGeneratorsList)):
+                        rtdg = dataGeneratorsList[i]
+                        if rtdg.datagenID == current.getId():   # already present
+                            position = i
+                            break
+                    if position == -1:        # create it
+                        rtdg = MatchingSetsOfRepeatedTasksDataGenerators(current.getId(), repeatedTaskIndex+1 )
+                        dataGeneratorsList.append(rtdg)
+                    else:
+                        rtdg = MatchingSetsOfRepeatedTasksDataGenerators(current.getId(), repeatedTaskIndex+1 )
+                        dataGeneratorsList[position] = rtdg
+                
+    dataGeneratorOutput = '\n'.join(dataGeneratorOutputList)
+    print dataGeneratorOutput
+    
 def generatePlots(sedmlDoc, dataGeneratorsList):
     #The 'plot' len(dataGeneratorsList)output, minus the legend
     print "import numpy"
@@ -465,4 +504,3 @@ def isId(string):
         return False
     else:
         return True
-
