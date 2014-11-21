@@ -19,6 +19,7 @@ import os.path
 import re
 import libsedml  # C:\WinPython-32bit-2.7.5.3\python-2.7.5\Lib\site-packages\libsedml\libsedml.py
 import zipfile
+#import string
 from collections import namedtuple
 
 MatchingSetsOfVariableIDs = namedtuple("MatchingSetsOfVariableIDs", "datagenID, taskReference, sedmlID, sbmlID")
@@ -63,23 +64,25 @@ def sedml_to_python(fullPathName):      # full path name to SedML model
     original = sys.stdout
     #sys.stdout = Tee(sys.stdout, f)   # output to console and file
     sys.stdout = Tee(f)              # output to file only
-
+    
+    print "# Translated SED-ML"
     print "# Beginning of generated script"
     print "import roadrunner"
     print ""
     for i in range(0, sedmlDoc.getNumModels()):
         currentModel = sedmlDoc.getModel(i)
-        print "# Execute the tasks of model " + currentModel.getName()
-        rrName = "rr" + str(i)
+        print "# Execute the tasks of model: " + currentModel.getId()
+        rrName = currentModel.getId()
+        #rrName = "rr" + str(i)
         print rrName + " = roadrunner.RoadRunner()"
         generateTasks(rrName, sedmlDoc, currentModel, path)
         print ""
-    print "# The Data Generators"
+    print "# List of Data Generators"
     dataGeneratorsList = []
     for i in range(0, sedmlDoc.getNumModels()):
         currentModel = sedmlDoc.getModel(i)
         generateData(sedmlDoc, currentModel, dataGeneratorsList)
-    print "# The Plots"
+    print "# List of Plots"
     generatePlots(sedmlDoc, dataGeneratorsList)
     print "# End of generated script\n"
 
@@ -89,7 +92,6 @@ def sedml_to_python(fullPathName):      # full path name to SedML model
     return contents
 
 def generateTasks(rrName, sedmlDoc, currentModel, path):
-
     listOfChanges = []
     loadModel(rrName, sedmlDoc, currentModel, path)
     #print(rrName + ".simulateOptions.structuredResult = False")
@@ -117,7 +119,7 @@ def generateTasks(rrName, sedmlDoc, currentModel, path):
             aStr = "# Unsupported change " + aChange.getElementName() + " for model " + currentModel.getId()
             print aStr
             return
-
+			
     # The 'selections' are a list of all the 'variable' elements from the dataGenerators
     # we first deal with normal tasks, if any
     for e in range(0,sedmlDoc.getNumTasks()):
@@ -203,8 +205,11 @@ def loadModel(rrName, sedmlDoc, currentModel, path):
     if isId(string):                             # it's the Id of a model
         originalModel = sedmlDoc.getModel(string)
         string = originalModel.getSource()          #  !!! for now, we reuse the original model to which the current model is referring to
-    if string.startswith("../"):                  # relative location, we trust it but need it trimmed
-        string = string[3:]
+    if string.startswith("."):                  # relative location, we trust it but need it trimmed
+        if string.startswith("../"):
+            string = string[3:]
+        elif string.startswith("./"):
+            string = string[2:]
         print rrName + ".load('" + path.replace("\\","/") + string + "')"    # SBML model name recovered from "source" attr
         #from os.path import expanduser
         #path = expanduser("~")
@@ -288,6 +293,7 @@ def generateSimulation(rrName, sedmlDoc, currentModel, task1, variablesList, var
                 taskId = task1.getId()
             else:
                 taskId = repeatedTask.getId() + "_" + str(repeatedTaskIndex)
+            taskId = taskId.replace('repeatedTask', 'rT')
             string = taskId + " = " + rrName + ".simulate("
             tc = currentSimulation
             totNumPoints = tc.getOutputEndTime() * tc.getNumberOfPoints() / (tc.getOutputEndTime() - tc.getOutputStartTime())
@@ -410,6 +416,7 @@ def generateDataLoop(sedmlDoc, currentModel, task1, variablesList, variablesDict
                     dataGeneratorsList[position] = rtdg
 
     dataGeneratorOutput = '\n'.join(dataGeneratorOutputList)
+    dataGeneratorOutput = dataGeneratorOutput.replace('repeatedTask', 'rT')
     print dataGeneratorOutput
 
 def generatePlots(sedmlDoc, dataGeneratorsList):
@@ -443,6 +450,8 @@ def generatePlots(sedmlDoc, dataGeneratorsList):
                                         curve = output.getCurve(k)
                                         xDataReference = curve.getXDataReference()
                                         yDataReference = curve.getYDataReference()
+                                        xDataReference = xDataReference.replace('repeatedTask', 'rT')
+                                        yDataReference = yDataReference.replace('repeatedTask', 'rT')
                                         if not len(dataGeneratorsList) == 0:
                                             allX += xDataReference + "_" + str(l) + ","
                                             allY += yDataReference + "_" + str(l) + ","
@@ -455,7 +464,7 @@ def generatePlots(sedmlDoc, dataGeneratorsList):
                                     print allY
                                     print "plt.plot(allX_" + str(l) + ", allY_" + str(l) + ")\n"
             elif "repeatedTask" not in checklist:    #There is no repeated tasks
-                if output.getNumCurves() > 1:
+                if output.getNumCurves() > 0:
                     allX = "allX_" + str(i) + " = numpy.array(["
                     allY = "allY_" + str(i) + " = numpy.array(["
                     for k in range(0, output.getNumCurves()):

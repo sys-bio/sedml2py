@@ -46,7 +46,14 @@
           <unit kind="second" exponent="-1" scale="0" multiplier="1"/>
         </listOfUnits>
       </unitDefinition>
-      <unitDefinition id="uM_um3_molecules_1">
+      <unitDefinition id="uM3">
+        <listOfUnits>
+          <unit kind="dimensionless" exponent="1" scale="0" multiplier="1e-021"/>
+          <unit kind="item" exponent="-1" scale="0" multiplier="1"/>
+          <unit kind="mole" exponent="1" scale="0" multiplier="1"/>
+        </listOfUnits>
+      </unitDefinition>
+	  <unitDefinition id="uM2">
         <listOfUnits>
           <unit kind="dimensionless" exponent="1" scale="0" multiplier="1e-021"/>
           <unit kind="item" exponent="-1" scale="0" multiplier="1"/>
@@ -71,7 +78,7 @@
       </unitDefinition>
     </listOfUnitDefinitions>
     <listOfCompartments>
-      <compartment id="cell" name="cell" spatialDimensions="3" size="4.18879020478639" units="um3" outside="PM" constant="true">
+      <compartment id="cell" name="cell" spatialDimensions="3" size="4.18879020478639" units="uM3" outside="PM" constant="true">
         <annotation>
           <vcell:VCellInfo xmlns:vcell="http://sourceforge.net/projects/vcell">
             <vcell:VCMLSpecific>
@@ -80,8 +87,8 @@
           </vcell:VCellInfo>
         </annotation>
       </compartment>
-      <compartment id="EC" name="EC" spatialDimensions="3" size="8" units="um3" constant="true"/>
-      <compartment id="PM" name="PM" spatialDimensions="2" size="12.5663706143592" units="um2" outside="EC" constant="true">
+      <compartment id="EC" name="EC" spatialDimensions="3" size="8" units="uM3" constant="true"/>
+      <compartment id="PM" name="PM" spatialDimensions="2" size="12.5663706143592" units="uM2" outside="EC" constant="true">
         <annotation>
           <vcell:VCellInfo xmlns:vcell="http://sourceforge.net/projects/vcell">
             <vcell:VCMLSpecific>
@@ -176,7 +183,7 @@
     </listOfSpecies>
     <listOfParameters>
       <parameter id="common_delta_A" value="1" units="s_1" constant="true"/>
-      <parameter id="KMOLE1" value="0.00166112956810631" units="uM_um3_molecules_1" constant="true"/>
+      <parameter id="KMOLE1" value="0.00166112956810631" units="uM3" constant="true"/>
       <parameter id="delta_A_C_decay" units="s_1" constant="false"/>
       <parameter id="delta_A_A_decay" units="s_1" constant="false"/>
       <parameter id="gamma_C_AR_binding" units="s_1_uM_1" constant="false"/>
