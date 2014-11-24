@@ -10,7 +10,7 @@
     </uniformTimeCourse>
   </listOfSimulations>
   <listOfModels>
-    <model id="Application0" name="Application0" language="urn:sedml:language:sbml" source="../asedml3repeat_Application0.xml" />
+    <model id="Application0" name="Application0" language="urn:sedml:language:sbml" source="./asedml3repeat_Application0.xml" />
   </listOfModels>
   <listOfTasks>
     <task id="task_0_0" name="task_0_0" modelReference="Application0" simulationReference="Simulation0" />

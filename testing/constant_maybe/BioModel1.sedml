@@ -10,7 +10,7 @@
     </uniformTimeCourse>
   </listOfSimulations>
   <listOfModels>
-    <model id="repressor_activator_oscillations" name="repressor_activator_oscillations" language="urn:sedml:language:sbml" source="../BioModel1_repressor_activator_oscillations.xml" />
+    <model id="repressor_activator_oscillations" name="repressor_activator_oscillations" language="urn:sedml:language:sbml" source="./BioModel1_repressor_activator_oscillations.xml" />
   </listOfModels>
   <listOfTasks>
     <task id="task_0_0" name="task_0_0" modelReference="repressor_activator_oscillations" simulationReference="scan_for_delta_A" />
