@@ -14,12 +14,9 @@
 #
 # the .sedml extension indicates a sedml file, the .sedx extension indicates a sedml archive
 
-import sys
+import sys, re, zipfile, shutil
 import os.path
-import re
-import libsedml  # C:\WinPython-32bit-2.7.5.3\python-2.7.5\Lib\site-packages\libsedml\libsedml.py
-import zipfile
-#import string
+import libsedml
 from collections import namedtuple
 
 MatchingSetsOfVariableIDs = namedtuple("MatchingSetsOfVariableIDs", "datagenID, taskReference, sedmlID, sbmlID")
@@ -27,6 +24,9 @@ MatchingSetsOfRepeatedTasksDataGenerators = namedtuple("MatchingSetsOfRepeatedTa
 
 modelname = str()
 outdir = str()
+mapping = [ ('repeated','r'), ('Repeated','r'), ('task','t'), ('Task', 't'), 
+                       ('data','d'), ('Data','d'), ('generator','g'), ('Generator', 'g')]
+                       # Map of replaced words
 
 # Entry point
 def sedml_to_python(fullPathName):      # full path name to SedML model
@@ -68,6 +68,8 @@ def sedml_to_python(fullPathName):      # full path name to SedML model
     print "# Translated SED-ML"
     print "# Beginning of generated script"
     print "import roadrunner"
+    print "import numpy as np"
+    print "import matplotlib.pyplot as plt"
     print ""
     for i in range(0, sedmlDoc.getNumModels()):
         currentModel = sedmlDoc.getModel(i)
@@ -82,9 +84,9 @@ def sedml_to_python(fullPathName):      # full path name to SedML model
     for i in range(0, sedmlDoc.getNumModels()):
         currentModel = sedmlDoc.getModel(i)
         generateData(sedmlDoc, currentModel, dataGeneratorsList)
-    print "# List of Plots"
-    generatePlots(sedmlDoc, dataGeneratorsList)
-    print "# End of generated script\n"
+    print "# List of Outputs"
+    generateOutputs(sedmlDoc, dataGeneratorsList)
+    print "# End of generated script"
 
     contents = f.getvalue()
     sys.stdout = original  # restore print to stdout only
@@ -119,7 +121,7 @@ def generateTasks(rrName, sedmlDoc, currentModel, path):
             aStr = "# Unsupported change " + aChange.getElementName() + " for model " + currentModel.getId()
             print aStr
             return
-			
+        
     # The 'selections' are a list of all the 'variable' elements from the dataGenerators
     # we first deal with normal tasks, if any
     for e in range(0,sedmlDoc.getNumTasks()):
@@ -196,7 +198,7 @@ def generateTasks(rrName, sedmlDoc, currentModel, path):
                     generateSimulation(rrName, sedmlDoc, currentModel, task2, variablesList, variablesDictionary, j, task1)
                     bFoundAtLeastOneTask = True
     if bFoundAtLeastOneTask == False:
-        print "# No simulation to run for this model: " + currentModel.getId();
+        print "# There are no simulations to run for this model: " + currentModel.getId();
 
 def loadModel(rrName, sedmlDoc, currentModel, path):
     global modelname
@@ -204,7 +206,10 @@ def loadModel(rrName, sedmlDoc, currentModel, path):
     string = currentModel.getSource()
     if isId(string):                             # it's the Id of a model
         originalModel = sedmlDoc.getModel(string)
-        string = originalModel.getSource()          #  !!! for now, we reuse the original model to which the current model is referring to
+        if originalModel != None:
+            string = originalModel.getSource()          #  !!! for now, we reuse the original model to which the current model is referring to
+        else:
+            pass
     if string.startswith("."):                  # relative location, we trust it but need it trimmed
         if string.startswith("../"):
             string = string[3:]
@@ -214,23 +219,27 @@ def loadModel(rrName, sedmlDoc, currentModel, path):
         #from os.path import expanduser
         #path = expanduser("~")
         #print(rrName + ".load('" + path + "\\" + string + "')")    # SBML model name recovered from "source" attr
-    elif "\\" or "/" not in string:
+    elif "\\" or "/" or "urn:miriam" not in string:
         print rrName + ".load('" + path.replace("\\","/") + string + "')"
     elif string.startswith("urn:miriam"):
+        print "Downloading model from BioModels Database..."
         astr = string.rsplit(':', 1)
         astr = astr[1]
-        import httplib
-        conn = httplib.HTTPConnection("www.ebi.ac.uk")
-        conn.request("GET", "/biomodels-main/download?mid=" + astr)
-        r1 = conn.getresponse()
-        #print(r1.status, r1.reason)
-        data1 = r1.read()
-        conn.close()
-        string = "SBMLModels/" + modelname + ".xml"
-        f1 = open(outdir + "/" + string, 'w')
-        f1.write(data1);
-        f1.close()
-        print rrName + ".load(roadrunner.testing.get_data('" + string +"'))"
+        string = path + astr + ".xml"
+        if os.path.exists(string) == False:
+            import httplib
+            conn = httplib.HTTPConnection("www.ebi.ac.uk")
+            conn.request("GET", "/biomodels-main/download?mid=" + astr)
+            r1 = conn.getresponse()
+            #print(r1.status, r1.reason)
+            data1 = r1.read()
+            conn.close()
+            f1 = open(string, 'w')
+            f1.write(data1);
+            f1.close()
+        else:
+            pass
+        print rrName + ".load('" + string +"'))"
     else:         # assume absolute path pointing to hard disk location
         string = string.replace("\\", "/")
         print rrName + ".load('" + string + "')"
@@ -268,20 +277,28 @@ def populateVariableLists(sedmlDoc, task1, variablesList, variablesDictionary):
     return
 
 def generateSimulation(rrName, sedmlDoc, currentModel, task1, variablesList, variablesDictionary, repeatedTaskIndex, repeatedTask = None):
-
-    string = rrName + ".selections = ["
-    for i in range(0, len(variablesList)):
-        if i > 0:
-            string += ","
-        string += "\"" + variablesList[i] + "\""
-    string += "]"
-    print string
+    
+    __uniform = False
+    __steady = False
 
     for j  in range(0, sedmlDoc.getNumSimulations()):
         currentSimulation = sedmlDoc.getSimulation(j)
         if task1.getSimulationReference() != currentSimulation.getId():
             continue;
         if currentSimulation.getTypeCode() == libsedml.SEDML_SIMULATION_UNIFORMTIMECOURSE:
+            if __steady == True:
+                print rrName + ".conservedMoietyAnalysis = False"
+            else:
+                pass
+            if __uniform == False:
+                string = rrName + ".selections = ["
+                for i in range(0, len(variablesList)):
+                    if i > 0:
+                        string += ","
+                    string += "\"" + variablesList[i] + "\""
+                string += "]"
+                print string
+            __uniform = True
             algorithm = currentSimulation.getAlgorithm()
             if currentSimulation.isSetAlgorithm() == False:
                 print "# Algorithm not set for simulation " + currentSimulation.getName()
@@ -293,15 +310,73 @@ def generateSimulation(rrName, sedmlDoc, currentModel, task1, variablesList, var
                 taskId = task1.getId()
             else:
                 taskId = repeatedTask.getId() + "_" + str(repeatedTaskIndex)
-            taskId = taskId.replace('repeatedTask', 'rT')
+            for k, v in mapping:
+                taskId = taskId.replace(k, v)
             string = taskId + " = " + rrName + ".simulate("
             tc = currentSimulation
             totNumPoints = tc.getOutputEndTime() * tc.getNumberOfPoints() / (tc.getOutputEndTime() - tc.getOutputStartTime())
             string += str(int(0)) + ", " + str(int(tc.getOutputEndTime())) + ", " + str(int(totNumPoints))
             string += ")"
             print string
+        elif currentSimulation.getTypeCode() == libsedml.SEDML_SIMULATION_STEADYSTATE:
+            if __steady == False:
+                print rrName + ".conservedMoietyAnalysis = True"
+                string = rrName + ".steadyStateSelections = ["
+                for i in range(0, len(variablesList)):
+                    if i > 0:
+                        string += ","
+                    string += "\"" + variablesList[i] + "\""
+                string += "]"
+                print string      
+            else:
+                pass
+            __steady = True
+            algorithm = currentSimulation.getAlgorithm()
+            if algorithm.getKisaoID() != "KISAO:0000099":
+                print "# Unsupported KisaoID " + algorithm.getKisaoID() + " for simulation " + currentSimulation.getName()
+                continue
+            if repeatedTaskIndex == -1:
+                taskId = task1.getId()
+            else:
+                taskId = repeatedTask.getId() + "_" + str(repeatedTaskIndex)
+            for k, v in mapping:
+                taskId = taskId.replace(k, v)
+            string = taskId + " = np.tile(" + rrName + ".getSteadyStateValues(), (2,1))"
+            print string
+            print taskId + "[1][0] = 10"
+        elif currentSimulation.getTypeCode() == libsedml.SEDML_SIMULATION_ONESTEP:
+            if __steady == True:
+                print rrName + ".conservedMoietyAnalysis = False"
+            else:
+                pass
+            string = rrName + ".selections = ["
+            for i in range(0, len(variablesList)):
+                if i > 0:
+                    string += ","
+                string += "\"" + variablesList[i] + "\""
+            string += "]"
+            print string
+            algorithm = currentSimulation.getAlgorithm()
+            if currentSimulation.isSetAlgorithm() == False:
+                print "# Algorithm not set for simulation " + currentSimulation.getName()
+                continue
+            if algorithm.getKisaoID() != "KISAO:0000019":
+                print "# Unsupported KisaoID " + algorithm.getKisaoID() + " for simulation " + currentSimulation.getName()
+                continue
+            if repeatedTaskIndex == -1:    # we expand the repeatedTask id because they need to be flattened for each element in ranges
+                taskId = task1.getId()
+            else:
+                taskId = repeatedTask.getId() + "_" + str(repeatedTaskIndex)
+            for k, v in mapping:
+                taskId = taskId.replace(k, v)
+            stepsize = currentSimulation.getStep()
+            if __uniform == True:
+                string = taskId + " = " + rrName + ".simulate(" + str(variablesList[-2]) + ", " + str(variablesList[-2] + stepsize) + ", 1)"
+            else:
+                string = taskId + " = " + rrName + ".simulate(0, " + str(stepsize) + ", 1)"
+            print string
         else:
-            print "# Unsupported type " + currentSimulation.getTypeCode() + " for simulation " + currentSimulation.getName()
+            print "# Unsupported type " + str(currentSimulation.getTypeCode()) + " for simulation " + currentSimulation.getName()
 
 def generateData(sedmlDoc, currentModel, dataGeneratorsList):
 
@@ -385,12 +460,18 @@ def generateDataLoop(sedmlDoc, currentModel, task1, variablesList, variablesDict
                 tc = currentSimulation
                 totNumPoints = tc.getOutputEndTime() * tc.getNumberOfPoints() / (tc.getOutputEndTime() - tc.getOutputStartTime())
                 replacementString = taskId + "[" + str(totNumPoints - currentSimulation.getNumberOfPoints()) + ":," + str(position) + "]"
+            elif currentSimulation.getTypeCode() == libsedml.SEDML_SIMULATION_STEADYSTATE:
+                replacementString = taskId + "[0:," + str(position) + "]"
+            elif currentSimulation.getTypeCode() == libsedml.SEDML_SIMULATION_ONESTEP:                
+                replacementString = taskId + "[0:," + str(position) + "]"
             else:
-                print "# Unsupported type " + currentSimulation.getTypeCode() + " for simulation " + currentSimulation.getName()
+                print "# Unsupported type " + str(currentSimulation.getTypeCode()) + " for simulation " + currentSimulation.getName()
             
             if dataGeneratorResult != dataGeneratorTemp:
-                dataGeneratorReplaced = dataGeneratorResult.replace(stringToReplace, replacementString)
-    
+                if stringToReplace in dataGeneratorResult:
+                    dataGeneratorReplaced = dataGeneratorResult.replace(stringToReplace, replacementString)
+                else:
+                    dataGeneratorReplaced = stringToReplace.replace(stringToReplace, replacementString)
                 dataGeneratorId = current.getId()       # we expand the datagen id because they need to be flattened for repeated tasks
                 if repeatedTaskIndex != -1:
                     dataGeneratorId += "_" + str(repeatedTaskIndex)
@@ -414,29 +495,38 @@ def generateDataLoop(sedmlDoc, currentModel, task1, variablesList, variablesDict
                 else:
                     rtdg = MatchingSetsOfRepeatedTasksDataGenerators(current.getId(), repeatedTaskIndex+1 )
                     dataGeneratorsList[position] = rtdg
-
+                    
     dataGeneratorOutput = '\n'.join(dataGeneratorOutputList)
-    dataGeneratorOutput = dataGeneratorOutput.replace('repeatedTask', 'rT')
+    for k, v in mapping:
+        dataGeneratorOutput = dataGeneratorOutput.replace(k, v)
     print dataGeneratorOutput
 
-def generatePlots(sedmlDoc, dataGeneratorsList):
+def generateOutputs(sedmlDoc, dataGeneratorsList):
     #The 'plot' len(dataGeneratorsList)output, minus the legend
-    print "import numpy"
-    print "import matplotlib.pyplot as plt\n"
-        
-    checklist = []
+    taskList = []
     
     for i in range(0, sedmlDoc.getNumOutputs()):
+        reportList = []
         output = sedmlDoc.getOutput(i)
         typeCode = output.getTypeCode()
         if typeCode == libsedml.SEDML_OUTPUT_REPORT:
-            print "# Unsupported output type"
-            #print("\tReport id=" , output.getId() , " numDataSets=" , output.getNumDataSets())
+            for x in range(0, output.getNumDataSets()):
+                dataSet1 = output.getDataSet(x)
+                if not dataSet1.getLabel():
+                    reportList.append(dataSet1.getDataReference())
+                else:
+                    reportList.append(dataSet1.getLabel())
+            print "print '--------------------" + output.getName().replace("'","") + "--------------------'"
+            print "import pandas"
+            print "df = pandas.DataFrame(np.array(" + str(reportList).replace("'","") + ").T, \ncolumns=" + str(reportList) + ")"
+            print "print df.head(5)"
+            print "print '--------------------Report End--------------------'\n"
+                
         elif typeCode == libsedml.SEDML_OUTPUT_PLOT2D:
             for x in range(0, sedmlDoc.getNumTasks()):
                 task1 = sedmlDoc.getTask(x)
-                checklist.append(task1.getElementName())
-            if "repeatedTask" in checklist:    #For repeated tasks
+                taskList.append(task1.getElementName())
+            if "repeatedTask" in taskList:    #For repeated tasks
                 for y in range(0, sedmlDoc.getNumTasks()):
                     task1 = sedmlDoc.getTask(y)
                     if task1.getElementName() == "repeatedTask":
@@ -444,51 +534,118 @@ def generatePlots(sedmlDoc, dataGeneratorsList):
                             aRange = task1.getRange(0)
                             for l in range(0, aRange.getNumberOfPoints()):
                                 if output.getNumCurves() > 1:
-                                    allX = "allX_" + str(l) + " = numpy.array(["
-                                    allY = "allY_" + str(l) + " = numpy.array(["
-                                    for k in range(0, output.getNumCurves()):
-                                        curve = output.getCurve(k)
+                                    allX = []
+                                    allY = []
+                                    for q in range(0, output.getNumCurves()):
+                                        curve = output.getCurve(q)
                                         xDataReference = curve.getXDataReference()
                                         yDataReference = curve.getYDataReference()
-                                        xDataReference = xDataReference.replace('repeatedTask', 'rT')
-                                        yDataReference = yDataReference.replace('repeatedTask', 'rT')
+                                        for k, v in mapping:
+                                            xDataReference = xDataReference.replace(k, v)
+                                            yDataReference = yDataReference.replace(k, v)
                                         if not len(dataGeneratorsList) == 0:
-                                            allX += xDataReference + "_" + str(l) + ","
-                                            allY += yDataReference + "_" + str(l) + ","
+                                            allX.append(xDataReference + "_" + str(i))
+                                            allY.append(yDataReference + "_" + str(i))
                                         else:
-                                            allX += xDataReference + ","
-                                            allY += yDataReference + ","
-                                    allX = allX[:-1] + "]).T"
-                                    allY = allY[:-1] + "]).T"
-                                    print allX
-                                    print allY
-                                    print "plt.plot(allX_" + str(l) + ", allY_" + str(l) + ")\n"
-            elif "repeatedTask" not in checklist:    #There is no repeated tasks
+                                            allX.append(xDataReference)
+                                            allY.append(yDataReference)
+            elif "repeatedTask" not in taskList:    #There is no repeated tasks
                 if output.getNumCurves() > 0:
-                    allX = "allX_" + str(i) + " = numpy.array(["
-                    allY = "allY_" + str(i) + " = numpy.array(["
+                    allX = []
+                    allY = []
                     for k in range(0, output.getNumCurves()):
                         curve = output.getCurve(k)
                         xDataReference = curve.getXDataReference()
                         yDataReference = curve.getYDataReference()
                         if not len(dataGeneratorsList) == 0:
-                            allX += xDataReference + "_" + str(i) + ","
-                            allY += yDataReference + "_" + str(i) + ","
+                            allX.append(xDataReference + "_" + str(i))
+                            allY.append(yDataReference + "_" + str(i))
                         else:
-                            allX += xDataReference + ","
-                            allY += yDataReference + ","
-                    allX = allX[:-1] + "]).T"
-                    allY = allY[:-1] + "]).T"
-                    print allX
-                    print allY
-                    print "plt.plot(allX_" + str(i) + ", allY_" + str(i) + ")\n"
+                            allX.append(xDataReference)
+                            allY.append(yDataReference)
+            if checkEqualIvo(allX) == True:
+                pass
+            else:
+                print "X_" + str(i) + " = np.array(" + str(allX).replace("'","") + ").T"
+            print "Y_" + str(i) + " = np.array(" + str(allY).replace("'","") + ").T"
+            if checkEqualIvo(allX) == True:
+                print "plt.plot(" + allX[0] + ", Y_" + str(i) + ")"
+            else:
+                print "plt.plot(X_" + str(i) + ", Y_" + str(i) + ")"
+            if curve.getLogX() == True:
+                print "plt.xscale('log')"
+            if curve.getLogY() == True:
+                print "plt.yscale('log')"
+            if output.getName() != None:
+                print "plt.title('" + output.getName() + "')"
+            else:
+                pass
+            print "plt.show()\n"
         elif typeCode == libsedml.SEDML_OUTPUT_PLOT3D:
-            print "# 3D plots unsupported at this time"
-            #print("\tPlot3d id=" , output.getId() , " numSurfaces=" , output.getNumSurfaces())
+            print "from mpl_toolkits.mplot3d import Axes3D"
+            print "fig = plt.figure()"
+            print "ax = fig.gca(projection='3d')"
+            for x in range(0, sedmlDoc.getNumTasks()):
+                task1 = sedmlDoc.getTask(x)
+                taskList.append(task1.getElementName())
+            if "repeatedTask" in taskList:    #For repeated tasks
+                for y in range(0, sedmlDoc.getNumTasks()):
+                    task1 = sedmlDoc.getTask(y)
+                    if task1.getElementName() == "repeatedTask":
+                        for z in range(0, task1.getNumSubTasks()):
+                            aRange = task1.getRange(0)
+                            for l in range(0, aRange.getNumberOfPoints()):
+                                if output.getNumSurfaces() > 1:
+                                    allX = []
+                                    allY = []
+                                    allZ = []
+                                    for q in range(0, output.getNumSurfaces()):
+                                        surface = output.getSurface(q)
+                                        xDataReference = surface.getXDataReference()
+                                        yDataReference = surface.getYDataReference()
+                                        zDataReference = surface.getZDataReference()
+                                        for k, v in mapping:
+                                            xDataReference = xDataReference.replace(k, v)
+                                            yDataReference = yDataReference.replace(k, v)
+                                            zDataReference = zDataReference.replace(k, v)
+                                        if not len(dataGeneratorsList) == 0:
+                                            allX.append(xDataReference + "_" + str(i))
+                                            allY.append(yDataReference + "_" + str(i))
+                                            allZ.append(zDataReference + "_" + str(i))
+                                        else:
+                                            allX.append(xDataReference)
+                                            allY.append(yDataReference)
+                                            allZ.append(zDataReference)
+            elif "repeatedTask" not in taskList:    #There is no repeated tasks
+                if output.getNumSurfaces() > 0:
+                    allX = []
+                    allY = []
+                    allZ = []
+                    for k in range(0, output.getNumSurfaces()):
+                        surface = output.getSurface(k)
+                        xDataReference = surface.getXDataReference()
+                        yDataReference = surface.getYDataReference()
+                        zDataReference = surface.getZDataReference()
+                        if not len(dataGeneratorsList) == 0:
+                            allX.append(xDataReference + "_" + str(i))
+                            allY.append(yDataReference + "_" + str(i))
+                            allZ.append(zDataReference + "_" + str(i))
+                        else:
+                            allX.append(xDataReference)
+                            allY.append(yDataReference)
+                            allZ.append(zDataReference)
+            #print "X_" + str(i) + " = np.array(" + str(allX).replace("'","") + ").T"
+            #print "Y_" + str(i) + " = np.array(" + str(allY).replace("'","") + ").T"
+            #print "Z_" + str(i) + " = np.array(" + str(allZ).replace("'","") + ").T"
+            for x in range(len(allX)):
+                print "ax.plot(" + str(allX[x]) + ", " + str(allY[x]) + ", " + str(allZ[x]) + ")"
+            if output.getName() != None:
+                print "plt.title('" + output.getName() + "')"
+            else:
+                pass
+            print "plt.show()\n"
         else:                       
             print "# Unsupported output type"
-
-    print "plt.show()"
 
 def isId(string):
     regular = re.compile('[\\/:-]')               # a SedML Id cannot contain these characters
@@ -496,3 +653,8 @@ def isId(string):
         return False
     else:
         return True
+
+def checkEqualIvo(lst):
+    return not lst or lst.count(lst[0]) == len(lst)
+
+    
