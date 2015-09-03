@@ -24,7 +24,7 @@ MatchingSetsOfRepeatedTasksDataGenerators = namedtuple("MatchingSetsOfRepeatedTa
 
 modelname = str()
 outdir = str()
-mapping = [ ('repeated','r'), ('Repeated','r'), ('task','t'), ('Task', 't'), 
+mapping = [ ('repeated','r'), ('Repeated','r'), ('task','t'), ('Task', 't'),
                        ('data','d'), ('Data','d'), ('generator','g'), ('Generator', 'g')]
                        # Map of replaced words
 
@@ -64,7 +64,7 @@ def sedml_to_python(fullPathName):      # full path name to SedML model
     original = sys.stdout
     #sys.stdout = Tee(sys.stdout, f)   # output to console and file
     sys.stdout = Tee(f)              # output to file only
-    
+
     print "# Translated SED-ML"
     print "# Beginning of generated script"
     print "import roadrunner"
@@ -121,7 +121,7 @@ def generateTasks(rrName, sedmlDoc, currentModel, path):
             aStr = "# Unsupported change " + aChange.getElementName() + " for model " + currentModel.getId()
             print aStr
             return
-        
+
     # The 'selections' are a list of all the 'variable' elements from the dataGenerators
     # we first deal with normal tasks, if any
     for e in range(0,sedmlDoc.getNumTasks()):
@@ -162,7 +162,7 @@ def generateTasks(rrName, sedmlDoc, currentModel, path):
                 else:
                     print rrName + ".simulateOptions.resetModel = False"
 
-                # need to use the RepeatedTask because the data generators refer to it 
+                # need to use the RepeatedTask because the data generators refer to it
                 variablesDictionary = []      # matching pairs of sedml variable ID and sbml variable ID
                 variablesList = []            # the IDs of the sbml variables, non duplicate entries
                 populateVariableLists(sedmlDoc, task1, variablesList, variablesDictionary)
@@ -193,7 +193,7 @@ def generateTasks(rrName, sedmlDoc, currentModel, path):
                         print "# Unsupported setValue target " + variableName
                         return          # nothing to do repeatedly since our change is bad
                     print rrName + ".model[\"init([" + vn + "])\"] = " + str(newValue)                   # set amount
-                    # need to use both the real Task (task2) because it has the reference to model and simulation 
+                    # need to use both the real Task (task2) because it has the reference to model and simulation
                     # and the repeated task (task1) because its Id is used for generating the flattened Id's
                     generateSimulation(rrName, sedmlDoc, currentModel, task2, variablesList, variablesDictionary, j, task1)
                     bFoundAtLeastOneTask = True
@@ -277,7 +277,7 @@ def populateVariableLists(sedmlDoc, task1, variablesList, variablesDictionary):
     return
 
 def generateSimulation(rrName, sedmlDoc, currentModel, task1, variablesList, variablesDictionary, repeatedTaskIndex, repeatedTask = None):
-    
+
     __uniform = False
     __steady = False
 
@@ -327,7 +327,7 @@ def generateSimulation(rrName, sedmlDoc, currentModel, task1, variablesList, var
                         string += ","
                     string += "\"" + variablesList[i] + "\""
                 string += "]"
-                print string      
+                print string
             else:
                 pass
             __steady = True
@@ -399,12 +399,12 @@ def generateData(sedmlDoc, currentModel, dataGeneratorsList):
                     continue
                 variablesDictionary = []
                 variablesList = []
-                # need to use the RepeatedTask because the data generators refer to it 
+                # need to use the RepeatedTask because the data generators refer to it
                 populateVariableLists(sedmlDoc, task1, variablesList, variablesDictionary)
                 # for each point in the range we compute the new values of the variables affected
                 # and generate a task
                 for j in range(0, aRange.getNumberOfPoints()):
-                    # need to use both the real Task (task2) because it has the reference to model and simulation 
+                    # need to use both the real Task (task2) because it has the reference to model and simulation
                     # and the repeated task (task1) because its Id is used for generating the flattened Id's
                     generateDataLoop(sedmlDoc, currentModel, task2, variablesList, variablesDictionary, j, task1, dataGeneratorsList)
                     bFoundAtLeastOneTask = True
@@ -436,15 +436,15 @@ def generateDataLoop(sedmlDoc, currentModel, task1, variablesList, variablesDict
         currentSimulation = sedmlDoc.getSimulation(s)
         if task1.getSimulationReference() == currentSimulation.getId():
             break;            # we found the simulation referred to by this task (can't be more than one)
-    
+
     dataGeneratorOutputList = []
     dataGeneratorTemp = str()
-    
+
     for j in range(0, len(variablesDictionary)):
         m = variablesDictionary[j]
         current = sedmlDoc.getDataGenerator(m.datagenID)
         dataGeneratorResult = libsedml.formulaToString(current.getMath())
-       
+
         if current.getId() == m.datagenID:
             stringToReplace = m.sedmlID
             position = m.sbmlID
@@ -462,11 +462,11 @@ def generateDataLoop(sedmlDoc, currentModel, task1, variablesList, variablesDict
                 replacementString = taskId + "[" + str(totNumPoints - currentSimulation.getNumberOfPoints()) + ":," + str(position) + "]"
             elif currentSimulation.getTypeCode() == libsedml.SEDML_SIMULATION_STEADYSTATE:
                 replacementString = taskId + "[0:," + str(position) + "]"
-            elif currentSimulation.getTypeCode() == libsedml.SEDML_SIMULATION_ONESTEP:                
+            elif currentSimulation.getTypeCode() == libsedml.SEDML_SIMULATION_ONESTEP:
                 replacementString = taskId + "[0:," + str(position) + "]"
             else:
                 print "# Unsupported type " + str(currentSimulation.getTypeCode()) + " for simulation " + currentSimulation.getName()
-            
+
             if dataGeneratorResult != dataGeneratorTemp:
                 if stringToReplace in dataGeneratorResult:
                     dataGeneratorReplaced = dataGeneratorResult.replace(stringToReplace, replacementString)
@@ -495,7 +495,7 @@ def generateDataLoop(sedmlDoc, currentModel, task1, variablesList, variablesDict
                 else:
                     rtdg = MatchingSetsOfRepeatedTasksDataGenerators(current.getId(), repeatedTaskIndex+1 )
                     dataGeneratorsList[position] = rtdg
-                    
+
     dataGeneratorOutput = '\n'.join(dataGeneratorOutputList)
     for k, v in mapping:
         dataGeneratorOutput = dataGeneratorOutput.replace(k, v)
@@ -504,7 +504,7 @@ def generateDataLoop(sedmlDoc, currentModel, task1, variablesList, variablesDict
 def generateOutputs(sedmlDoc, dataGeneratorsList):
     #The 'plot' len(dataGeneratorsList)output, minus the legend
     taskList = []
-    
+
     for i in range(0, sedmlDoc.getNumOutputs()):
         reportList = []
         output = sedmlDoc.getOutput(i)
@@ -521,7 +521,7 @@ def generateOutputs(sedmlDoc, dataGeneratorsList):
             print "df = pandas.DataFrame(np.array(" + str(reportList).replace("'","") + ").T, \ncolumns=" + str(reportList) + ")"
             print "print df.head(5)"
             print "print '--------------------Report End--------------------'\n"
-                
+
         elif typeCode == libsedml.SEDML_OUTPUT_PLOT2D:
             for x in range(0, sedmlDoc.getNumTasks()):
                 task1 = sedmlDoc.getTask(x)
@@ -553,10 +553,13 @@ def generateOutputs(sedmlDoc, dataGeneratorsList):
                 if output.getNumCurves() > 0:
                     allX = []
                     allY = []
-                    for k in range(0, output.getNumCurves()):
-                        curve = output.getCurve(k)
+                    for m in range(0, output.getNumCurves()):
+                        curve = output.getCurve(m)
                         xDataReference = curve.getXDataReference()
                         yDataReference = curve.getYDataReference()
+                        for k, v in mapping:
+                            xDataReference = xDataReference.replace(k, v)
+                            yDataReference = yDataReference.replace(k, v)
                         if not len(dataGeneratorsList) == 0:
                             allX.append(xDataReference + "_" + str(i))
                             allY.append(yDataReference + "_" + str(i))
@@ -621,11 +624,15 @@ def generateOutputs(sedmlDoc, dataGeneratorsList):
                     allX = []
                     allY = []
                     allZ = []
-                    for k in range(0, output.getNumSurfaces()):
-                        surface = output.getSurface(k)
+                    for m in range(0, output.getNumSurfaces()):
+                        surface = output.getSurface(m)
                         xDataReference = surface.getXDataReference()
                         yDataReference = surface.getYDataReference()
                         zDataReference = surface.getZDataReference()
+                        for k, v in mapping:
+                            xDataReference = xDataReference.replace(k, v)
+                            yDataReference = yDataReference.replace(k, v)
+                            zDataReference = zDataReference.replace(k, v)
                         if not len(dataGeneratorsList) == 0:
                             allX.append(xDataReference + "_" + str(i))
                             allY.append(yDataReference + "_" + str(i))
@@ -644,7 +651,7 @@ def generateOutputs(sedmlDoc, dataGeneratorsList):
             else:
                 pass
             print "plt.show()\n"
-        else:                       
+        else:
             print "# Unsupported output type"
 
 def isId(string):
@@ -657,4 +664,3 @@ def isId(string):
 def checkEqualIvo(lst):
     return not lst or lst.count(lst[0]) == len(lst)
 
-    
