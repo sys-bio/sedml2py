@@ -105,18 +105,21 @@ def generateTasks(rrName, sedmlDoc, currentModel, path):
             newValue = aChange.getNewValue()
             variableName = aChange.getTarget()
             if (("model" in variableName) and ("parameter" in variableName)):
-                pass
+                variableName = variableName.rsplit("id=\'",1)[1]
+                variableName = variableName.rsplit("\'",1)[0]
+                aStr = rrName + ".model[\"" + variableName + "\"] = " + newValue    # set amount
+                listOfChanges.append(aStr)
+                print aStr
             elif (("model" in variableName) and ("species" in variableName)):
-                pass
+                variableName = variableName.rsplit("id=\'",1)[1]
+                variableName = variableName.rsplit("\'",1)[0]
+                aStr = rrName + ".model[\"init([" + variableName + "])\"] = " + newValue    # set amount
+                #aStr = rrName + ".model[\"[" + variableName + "]\"] = " + newValue    # set amount
+                listOfChanges.append(aStr)
+                print aStr
             else:
                 print "# Unsupported changeAttribute target " + variableName
                 return          # nothing to do repeatedly since our change is bad
-            variableName = variableName.rsplit("id=\'",1)[1]
-            variableName = variableName.rsplit("\'",1)[0]
-            aStr = rrName + ".model[\"init([" + variableName + "])\"] = " + newValue    # set amount
-            #aStr = rrName + ".model[\"[" + variableName + "]\"] = " + newValue    # set amount
-            listOfChanges.append(aStr)
-            print aStr
         else:
             aStr = "# Unsupported change " + aChange.getElementName() + " for model " + currentModel.getId()
             print aStr
@@ -186,13 +189,12 @@ def generateTasks(rrName, sedmlDoc, currentModel, path):
                     end = aRange.getEnd()
                     newValue = start + j * (end - start) / (aRange.getNumberOfPoints()-1)
                     if (("model" in variableName) and ("parameter" in variableName)):
-                        pass
+                        print rrName + ".model[\"" + vn + "\"] = " + str(newValue)                   # set amount
                     elif (("model" in variableName) and ("species" in variableName)):
-                        pass
+                        print rrName + ".model[\"init([" + vn + "])\"] = " + str(newValue)                   # set amount
                     else:
                         print "# Unsupported setValue target " + variableName
                         return          # nothing to do repeatedly since our change is bad
-                    print rrName + ".model[\"init([" + vn + "])\"] = " + str(newValue)                   # set amount
                     # need to use both the real Task (task2) because it has the reference to model and simulation
                     # and the repeated task (task1) because its Id is used for generating the flattened Id's
                     generateSimulation(rrName, sedmlDoc, currentModel, task2, variablesList, variablesDictionary, j, task1)
