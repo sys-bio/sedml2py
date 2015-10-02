@@ -293,7 +293,7 @@ def generateSimulation(rrName, sedmlDoc, currentModel, task1, variablesList, var
             else:
                 pass
             if __uniform == False:
-                string = rrName + ".selections = ["
+                string = rrName + ".timeCourseSelections = ["
                 for i in range(0, len(variablesList)):
                     if i > 0:
                         string += ","
@@ -351,7 +351,7 @@ def generateSimulation(rrName, sedmlDoc, currentModel, task1, variablesList, var
                 print rrName + ".conservedMoietyAnalysis = False"
             else:
                 pass
-            string = rrName + ".selections = ["
+            string = rrName + ".timeCourseSelections = ["
             for i in range(0, len(variablesList)):
                 if i > 0:
                     string += ","
