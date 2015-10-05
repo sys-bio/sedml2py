@@ -581,10 +581,10 @@ def generateOutputs(sedmlDoc, dataGeneratorsList):
                 print "plt.xscale('log')"
             if curve.getLogY() == True:
                 print "plt.yscale('log')"
-            if output.getName() != None:
+            if output.getName() != '':
                 print "plt.title('" + output.getName() + "')"
             else:
-                pass
+                print "plt.title('" + output.getId() + "')"
             print "plt.show()\n"
         elif typeCode == libsedml.SEDML_OUTPUT_PLOT3D:
             print "from mpl_toolkits.mplot3d import Axes3D"
@@ -648,10 +648,10 @@ def generateOutputs(sedmlDoc, dataGeneratorsList):
             #print "Z_" + str(i) + " = np.array(" + str(allZ).replace("'","") + ").T"
             for x in range(len(allX)):
                 print "ax.plot(" + str(allX[x]) + ", " + str(allY[x]) + ", " + str(allZ[x]) + ")"
-            if output.getName() != None:
+            if output.getName() != '':
                 print "plt.title('" + output.getName() + "')"
             else:
-                pass
+                print "plt.title('" + output.getId() + "')"
             print "plt.show()\n"
         else:
             print "# Unsupported output type"
